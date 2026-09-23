@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>JEV に1回だけ聞く</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="shell ask-shell">
+    <header class="masthead"><div><p class="kicker">JEV API を1回だけ呼ぶ</p><h1>問い合わせ1通、どの担当？</h1></div></header>
+    <section class="ask-grid">
+      <div class="ask-in">
+        <label for="inquiry">問い合わせ（state）</label>
+        <textarea id="inquiry" rows="3">ログイン画面でエラーが出て、昨日から入れません。</textarea>
+        <p class="ask-q">質問（Choice）：この問い合わせはどの担当が受けるべきか<br>
+          選択肢：<b>technical</b> ログインできない・ソフトの不具合 ／ <b>billing</b> 請求・支払い ／ <b>other</b> その他</p>
+        <button id="send" class="primary ask-send">JEV に聞く</button>
+      </div>
+      <div class="ask-out">
+        <p class="kicker">返事</p>
+        <div id="word" class="ask-word">—</div>
+        <div id="meta" class="ask-meta"></div>
+        <ol id="bars" class="ask-bars"></ol>
+      </div>
+    </section>
+    <section class="ask-raw"><p class="kicker">API の返事そのまま（JSON）</p><pre id="raw">まだ呼んでいません</pre></section>
+  </main>
+  <script src="ask.js"></script>
+</body>
+</html>

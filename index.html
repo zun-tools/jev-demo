@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>JEV 操作比較デスク</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="masthead">
+      <div><p class="kicker">JEV browser experiment</p><h1>判断が、画面操作になる瞬間。</h1></div>
+      <div class="scenario-wrap"><label for="scenario">実験シナリオ</label><select id="scenario"><option value="normal">通常画面</option><option value="changed">配置・表記を変更</option><option value="missing">該当案件なし</option></select></div>
+    </header>
+
+    <section class="goal-bar" aria-label="依頼">
+      <label for="goal">依頼</label>
+      <textarea id="goal" rows="2">未対応の問い合わせから、ログインできず困っている件を探して、担当を技術担当に変更して保存してください。該当なしなら変更せず終了してください。</textarea>
+      <button id="reset" class="quiet">最初からやり直す</button>
+    </section>
+
+    <section class="legend"><span class="dot codex-dot"></span><span class="legend-op">Codex</span> が画面を確認して操作するレーン <span class="dot jev-dot"></span>JEV が候補から判断しクリックするレーン <span class="fixture-note">架空の問い合わせを使った試作</span></section>
+    <section id="lanes" class="lanes" aria-label="比較画面"></section>
+
+    <section class="evidence">
+      <div class="evidence-title"><p class="kicker">計測の読み方</p><h2>同じ業務画面、違う担当。</h2></div>
+      <p>参考実測：このセッションのUI操作とJEV直結ループの比較。モデル単体の速度比較ではない。料金比較は未計測。</p>
+    </section>
+  </main>
+  <template id="lane-template">
+    <article class="lane">
+      <div class="done-banner"></div>
+      <header class="lane-head"><div><p class="lane-kind"></p><h2 class="lane-title"></h2></div><span class="run-state">待機中</span></header>
+      <div class="lane-toolbar"><div class="metric"><span>操作タイマー</span><strong class="wall-time">0.0 秒</strong></div><div class="metric"><span class="request-label">操作数</span><strong class="request-count">0</strong></div><button class="primary start"></button><button class="quiet stop" disabled>停止</button></div>
+      <div class="spotlight"><span class="who"></span><b class="what"></b></div>
+      <ol class="steps"></ol>
+      <div class="work-area"></div>
+      <div class="verify-row"><button class="verify">結果を確認</button><output class="verification">まだ確認していません</output></div>
+      <div class="log-wrap"><h3>操作ログ</h3><ol class="log" aria-live="polite"></ol></div>
+    </article>
+  </template>
+  <script src="app.js"></script>
+</body>
+</html>
