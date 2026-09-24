@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>迷った時だけ Claude</title>
+  <link rel="stylesheet" href="batch.css">
+</head>
+<body>
+  <main class="desk">
+    <header class="top">
+      <h1 class="title">迷った時だけ、Claude へ。<span class="kicker">JEV は止まらずに次の件へ。迷った手だけ Claude が後から決める</span></h1>
+      <div class="top-side">
+        <span class="threshold">閾値 <b id="threshold">0.65</b></span>
+        <span id="take-label" class="take"></span>
+        <span id="take-status" class="state">読み込み中</span>
+        <button id="start" class="start" type="button" disabled>開始</button>
+      </div>
+    </header>
+    <p id="notice" class="notice" hidden></p>
+
+    <section class="meters" aria-label="Claude 呼び出しの数">
+      <div class="meter-main">
+        <p class="mm-label">Claude 呼び出し</p>
+        <p class="mm-value"><strong id="m-claude">0</strong><span class="mm-sep">／</span><strong id="m-steps">0</strong><span class="mm-unit">手</span></p>
+        <p class="mm-planned">分母は JEV に聞いた手（予定 <b id="m-planned">—</b> 手）</p>
+      </div>
+      <div class="meter-side">
+        <div class="side-row">
+          <span class="side-label">手ごと</span>
+          <ul id="m-by-step" class="by-step" aria-label="手ごとの Claude 呼び出し／JEV に聞いた手"></ul>
+          <div class="roundtrip"><span>Claude → JEV に戻った件</span><strong id="n-roundtrip">0</strong></div>
+        </div>
+        <div class="side-row lanes" aria-label="いま動いているもの">
+          <div class="lane lane-jev">
+            <span class="lane-who jev">JEV</span>
+            <p id="jev-lane" class="lane-text">待機中</p>
+          </div>
+          <div class="lane lane-claude">
+            <span class="lane-who claude">Claude</span>
+            <ol id="claude-seats" class="seats" aria-label="Claude が考え中（同時3件まで）"></ol>
+            <div class="queue-wrap"><span class="qlabel">順番待ち</span><ol id="claude-queue" class="queue"><li class="q-empty">なし</li></ol></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="board-wrap" aria-label="受信箱">
+      <div class="board-head">
+        <h2 class="sec">受信箱 <small>1件＝1枚。札を押すとその件の往復を表示</small></h2>
+        <ul class="legend" aria-label="件の内訳">
+          <li><i class="sw sw-jevnow"></i>JEV 判定中</li>
+          <li><i class="sw sw-think"></i>Claude 考え中<b id="n-think" class="n-think">0</b></li>
+          <li><i class="sw sw-queue"></i>順番待ち<b id="n-queue" class="n-think">0</b></li>
+          <li><i class="sw sw-resume"></i>Claude 決定→JEV へ</li>
+          <li><i class="sw sw-jev"></i>JEV で完了<b id="n-jev" class="n-jev">0</b></li>
+          <li><i class="sw sw-claude"></i>Claude 経由で完了<b id="n-claude" class="n-claude">0</b></li>
+          <li><i class="sw sw-stop"></i>停止<b id="n-stop" class="n-stop">0</b></li>
+          <li><i class="sw sw-wait"></i>未処理<b id="n-left">0</b></li>
+        </ul>
+      </div>
+      <ol id="board" class="board"></ol>
+    </section>
+
+    <div class="layout">
+      <section class="site" aria-label="問い合わせ詳細">
+        <h2 class="sec">問い合わせ詳細 <small>JEV と Claude が読むのはこの枠の中の文字だけ</small></h2>
+        <article id="ticket-pane" class="pane"><p class="pane-empty">まだ開いていません</p></article>
+      </section>
+      <section class="trace-wrap" aria-label="手ごとの往復">
+        <h2 class="sec">手ごとの往復 <small id="trace-ticket"></small></h2>
+        <div id="trace" class="trace"><p class="trace-empty">開始すると、ここに JEV の確信度と行き先が並びます</p></div>
+      </section>
+      <section class="log-wrap" aria-label="ログ">
+        <h2 class="sec">ログ <small>誰が・何を・確信度・時間</small></h2>
+        <ol id="log" class="log" aria-live="polite"></ol>
+      </section>
+    </div>
+  </main>
+  <script src="batch.js"></script>
+</body>
+</html>

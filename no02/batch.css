@@ -1,0 +1,247 @@
+@font-face { font-family:"Noto Sans JP"; src:url("/fonts/NotoSansJP-Regular.otf") format("opentype"); font-weight:400; font-display:block; }
+@font-face { font-family:"Noto Sans JP"; src:url("/fonts/NotoSansJP-Bold.otf") format("opentype"); font-weight:700; font-display:block; }
+/* 差し戻しデモ（/batch）非同期版（v2 は3手）。チャンネルのスライドの型に合わせる（紙の地・白いカード・細い罫）。黒地・暗い面は使わない。
+   塗るのは淡色フィル（明度0.90以上）だけ。濃い意味色は枠線・細い線・小さな印・数字・短いラベルにだけ使う。影・グラデーション・二重枠は使わない。
+   処理中は動き＋文字で分ける: JEV 判定中（緑の進行線）・Claude 考え中（橙の進行線＋経過秒）・順番待ち（橙の破線が脈打つ＋何番目）・再開（橙の枠＋「Claude 決定→JEV へ」）。
+   1920×1080 の窓でスクロールなしに収まる（下段の3枠は残りの高さに合わせ、あふれた分は枠の中だけで送る）。 */
+:root {
+  --paper:#f7f6f2; --sheet:#ffffff; --ink:#2d3436; --muted:#6b7480; --rule:#d8d4cc; --rule-soft:#ebe8e2;
+  --series:#285f86; --series-bg:#e7f0f7;
+  --jev:#00a45a; --jev-bg:#e6f6ee;
+  --claude:#e17055; --claude-bg:#fdf0e9;
+  --stop:#e06c75; --stop-bg:#fdecee;
+  --struct:#0984e3; --struct-bg:#e8f2fd;
+  font-family:"Noto Sans JP","Hiragino Sans","Hiragino Kaku Gothic ProN",sans-serif; color:var(--ink); background:var(--paper);
+}
+* { box-sizing:border-box; }
+body { margin:0; min-width:320px; background:var(--paper); }
+button { font:inherit; color:inherit; }
+button:focus-visible { outline:2px solid var(--struct); outline-offset:2px; }
+b, strong { font-variant-numeric:tabular-nums; }
+.desk { padding:12px 24px 16px; display:flex; flex-direction:column; gap:12px; }
+.desk > * { flex:none; }
+@media (min-width:1280px) and (min-height:760px) { .desk { height:100vh; } }
+
+/* タイトルは1行の細い帯（左にタイトル、右に状態） */
+.top { display:flex; justify-content:space-between; align-items:center; gap:16px; border-bottom:1px solid var(--rule); padding-bottom:8px; min-height:36px; }
+.title { margin:0; font-size:16px; font-weight:700; letter-spacing:.02em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.kicker { margin-left:14px; font-size:13px; font-weight:400; color:var(--muted); }
+.top-side { display:flex; gap:14px; align-items:center; font-size:13px; color:var(--muted); flex:none; }
+.threshold b { color:var(--ink); font-size:14px; }
+.take { color:var(--muted); }
+.state { font-weight:700; color:var(--muted); padding:2px 10px; border:1px solid var(--rule); background:var(--sheet); border-radius:3px; }
+.state.running { color:var(--series); border-color:var(--series); background:var(--series-bg); }
+.state.done { color:var(--jev); border-color:var(--jev); background:var(--jev-bg); }
+.state.halted { color:var(--stop); border-color:var(--stop); background:var(--stop-bg); }
+.start { border:1px solid var(--series); background:var(--sheet); color:var(--series); padding:2px 14px; font-weight:700; border-radius:3px; cursor:pointer; }
+.start:disabled { opacity:.4; cursor:not-allowed; }
+.state.running ~ .start, .state.done ~ .start, .state.halted ~ .start { display:none; }
+.notice { margin:0; padding:6px 12px; border:1px solid var(--stop); background:var(--stop-bg); color:var(--ink); font-size:14px; font-weight:700; }
+
+.sec { margin:0; font-size:13px; font-weight:700; color:var(--series); letter-spacing:.04em; }
+.sec small { font-weight:400; color:var(--muted); margin-left:8px; font-size:12px; letter-spacing:0; }
+
+/* 主メーター（主役）: Claude 呼び出し n／M 手。M は JEV に聞いた手。予定の手数は下に小さく */
+.meters { display:grid; grid-template-columns:400px minmax(0,1fr); gap:12px; }
+.meter-main { background:var(--sheet); border:1px solid var(--rule); padding:10px 20px 10px; display:grid; align-content:center; }
+.mm-label { margin:0; font-size:14px; font-weight:700; color:var(--muted); }
+.mm-value { margin:2px 0 0; display:flex; align-items:baseline; gap:6px; line-height:1; }
+.mm-value strong { font-size:64px; font-weight:700; letter-spacing:-.02em; }
+#m-claude { color:var(--claude); }
+#m-steps { color:var(--ink); }
+.mm-sep { font-size:40px; color:var(--rule); font-weight:300; }
+.mm-unit { font-size:20px; font-weight:700; color:var(--muted); margin-left:2px; }
+.mm-planned { margin:6px 0 0; font-size:12px; color:var(--muted); }
+
+/* 脇（主役より控えめに1段）: 手ごとの3メーター・往復・JEV の流れ・Claude の3席・順番待ち */
+.meter-side { display:grid; grid-template-rows:1fr 1fr; gap:8px; min-width:0; }
+.side-row { display:flex; gap:8px; align-items:stretch; min-width:0; }
+.side-label { align-self:center; font-size:12px; font-weight:700; color:var(--series); flex:none; width:44px; }
+.by-step { list-style:none; margin:0; padding:0; display:flex; gap:8px; flex:1; min-width:0; }
+.bs { background:var(--sheet); border:1px solid var(--rule); padding:0 14px; display:flex; align-items:center; gap:4px; flex:1; min-width:0; }
+.bs-name { font-size:13px; color:var(--muted); margin-right:auto; white-space:nowrap; }
+.bs b { font-size:22px; line-height:1; font-weight:700; }
+.bs-claude { color:var(--claude); }
+.bs-sep { color:var(--rule); }
+.roundtrip { background:var(--sheet); border:1px solid var(--rule); padding:0 14px; display:flex; align-items:center; gap:12px; flex:none; }
+.roundtrip span { font-size:13px; color:var(--muted); white-space:nowrap; }
+.roundtrip strong { font-size:22px; line-height:1; color:var(--jev); }
+
+.lane { background:var(--sheet); border:1px solid var(--rule); padding:0 12px; display:flex; gap:10px; align-items:center; min-width:0; }
+.lane-jev { flex:0 0 340px; }
+.lane-claude { flex:1; }
+.lane-who { font-size:12px; font-weight:700; padding:1px 8px; flex:none; border-radius:3px; }
+.lane-who.jev { color:var(--jev); background:var(--jev-bg); }
+.lane-who.claude { color:var(--claude); background:var(--claude-bg); }
+.lane-text { margin:0; font-size:13px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
+.lane-text.busy::before, .lane-text.resume::before { content:""; display:inline-block; width:8px; height:8px; margin-right:8px; border-radius:50%; background:var(--jev); animation:pulse 1.1s ease-in-out infinite; vertical-align:1px; }
+.lane-text.resume::before { background:var(--claude); }
+.lane-text.idle { color:var(--muted); font-weight:400; }
+.lane-text.done { color:var(--jev); }
+.lane-text.halted { color:var(--stop); }
+.seats { list-style:none; margin:0; padding:0; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:6px; flex:1; min-width:0; }
+.seat { position:relative; overflow:hidden; border:1px dashed var(--rule); padding:3px 8px; font-size:12px; display:flex; gap:6px; align-items:baseline; white-space:nowrap; min-height:26px; }
+.seat.empty { color:var(--muted); justify-content:center; }
+.seat.busy { border:1px solid var(--claude); background:var(--claude-bg); }
+.seat.busy b { font-size:13px; }
+.seat-time { margin-left:auto; font-weight:700; color:var(--claude); }
+.seat-bar { position:absolute; left:0; bottom:0; height:2px; width:35%; background:var(--claude); animation:run 1.6s ease-in-out infinite; }
+.queue-wrap { display:flex; gap:6px; align-items:center; font-size:12px; flex:0 0 250px; min-width:0; overflow:hidden; }
+.qlabel { font-weight:700; color:var(--muted); flex:none; }
+.queue { list-style:none; margin:0; padding:0; display:flex; gap:4px; flex-wrap:nowrap; overflow:hidden; min-width:0; }
+.q-item { border:1px dashed var(--claude); color:var(--ink); padding:1px 5px; background:var(--sheet); white-space:nowrap; }
+.q-more, .q-empty { color:var(--muted); white-space:nowrap; }
+
+/* 受信箱: 見出しの行に凡例と件の内訳を並べる */
+.board-head { display:flex; justify-content:space-between; align-items:center; gap:16px; margin-bottom:8px; }
+.legend { list-style:none; margin:0; padding:0; font-size:12px; color:var(--muted); display:flex; gap:14px; align-items:center; flex-wrap:wrap; justify-content:flex-end; }
+.legend li { display:flex; align-items:center; gap:5px; white-space:nowrap; }
+.legend b { color:var(--ink); font-size:14px; margin-left:2px; }
+.legend b.n-jev { color:var(--jev); } .legend b.n-think, .legend b.n-claude { color:var(--claude); } .legend b.n-stop { color:var(--stop); }
+.sw { display:inline-block; width:14px; height:14px; border:1px solid var(--rule); background:var(--sheet); }
+.sw-jevnow { border:2px solid var(--jev); }
+.sw-think { border:2px solid var(--claude); background:var(--claude-bg); }
+.sw-queue { border:1px dashed var(--claude); }
+.sw-resume { border:2px solid var(--claude); }
+.sw-jev { background:var(--jev-bg); border-color:var(--jev); }
+.sw-claude { background:var(--claude-bg); border-color:var(--claude); }
+.sw-stop { background:var(--stop-bg); border-color:var(--stop); }
+
+/* 札（主役）: 10列×3段。塗るのは確定した札だけ（淡色）。処理中は白地に意味色の枠と細い進行線 */
+.board { list-style:none; margin:0; padding:0; display:grid; grid-template-columns:repeat(10,minmax(0,1fr)); gap:8px; }
+.card { position:relative; overflow:hidden; width:100%; min-height:80px; text-align:left; border:1px solid var(--rule); background:var(--sheet); padding:7px 10px 9px; display:grid; gap:4px; align-content:start; cursor:pointer; transition:background-color .3s, border-color .3s; }
+.card .chead { display:flex; align-items:center; gap:6px; }
+.card .cid { font-weight:700; font-size:15px; white-space:nowrap; }
+.card .cstate { font-size:12px; font-weight:700; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-variant-numeric:tabular-nums; }
+.card .csub { font-size:13px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+/* 手ごとの小さな印（担当・優先・返信）: 点の色が「誰が決めたか」 */
+.card .pips { display:flex; gap:7px; margin-left:auto; }
+.pip { display:flex; align-items:center; gap:3px; font-size:11px; line-height:1; color:var(--muted); white-space:nowrap; }
+.pip::before { content:""; width:7px; height:7px; border-radius:50%; border:1px solid var(--rule); background:var(--sheet); box-sizing:border-box; }
+.pip.by-jev::before { background:var(--jev); border-color:var(--jev); }
+.pip.by-claude::before { background:var(--claude); border-color:var(--claude); }
+.pip.by-stop::before { background:var(--stop); border-color:var(--stop); }
+.pip.by-jevnow::before { border-color:var(--jev); animation:pulse 1.1s ease-in-out infinite; }
+.pip.by-think::before { border-color:var(--claude); background:var(--claude-bg); animation:pulse 1.1s ease-in-out infinite; }
+.pip.by-queue::before { border:1px dashed var(--claude); }
+.pip.by-jev, .pip.by-claude, .pip.by-stop { color:var(--ink); }
+
+/* 進行線（JEV 判定中・Claude 考え中）: 札の下端を細い線が行き来する */
+.card.ph-jev::after, .card.ph-thinking::after { content:""; position:absolute; left:0; bottom:0; height:3px; width:35%; animation:run 1.6s ease-in-out infinite; }
+/* JEV 判定中（1件）: 白地・緑の枠・緑の進行線 */
+.card.ph-jev { border:2px solid var(--jev); padding:6px 9px 8px; }
+.card.ph-jev::after { background:var(--jev); }
+.card.ph-jev .cstate { color:var(--jev); }
+/* Claude 考え中（最大3件）: 淡い橙の面・橙の枠・橙の進行線・経過秒 */
+.card.ph-thinking { border:2px solid var(--claude); background:var(--claude-bg); padding:6px 9px 8px; }
+.card.ph-thinking::after { background:var(--claude); }
+.card.ph-thinking .cstate { color:var(--claude); }
+/* Claude の順番待ち: 白地・橙の破線が脈打つ・何番目 */
+.card.ph-queued { border:1px dashed var(--claude); animation:dashPulse 1.6s ease-in-out infinite; }
+.card.ph-queued .cstate { color:var(--claude); }
+/* Claude が決めて、JEV が戻るのを待つ（再開待ち）: 白地・橙の枠 */
+.card.ph-resume { border:2px solid var(--claude); padding:6px 9px 8px; }
+.card.ph-resume .cstate { color:var(--claude); }
+/* 確定: 淡色の面＋細い枠 */
+.card.ph-done-jev { background:var(--jev-bg); border-color:var(--jev); }
+.card.ph-done-jev .cstate { color:var(--jev); }
+.card.ph-done-claude { background:var(--claude-bg); border-color:var(--claude); }
+.card.ph-done-claude .cstate { color:var(--claude); }
+.card.ph-stop { background:var(--stop-bg); border-color:var(--stop); }
+.card.ph-stop .cstate { color:var(--stop); }
+.card.ph-done-jev .csub, .card.ph-done-claude .csub, .card.ph-stop .csub, .card.ph-thinking .csub, .card.ph-resume .csub, .card.ph-jev .csub { color:var(--ink); }
+.card.settled { animation:settle .6s ease-out 1; }
+/* 固定中（寄った表示に出している札）: 上端に構造色の細い帯。枠は状態の色のまま（二重枠にしない） */
+.card.pinned::before { content:""; position:absolute; left:0; right:0; top:0; height:4px; background:var(--struct); }
+
+/* 下段: 問い合わせ詳細・手ごとの往復・ログ（残りの高さに収める） */
+.layout { flex:1 1 auto; display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.2fr) minmax(0,.72fr); gap:12px; min-height:0; }
+.layout > section { display:grid; grid-template-rows:auto minmax(0,1fr); gap:6px; min-height:0; }
+
+/* 問い合わせ詳細（観測の範囲）。件名と本文は pre-wrap にして、画面の文字をそのまま読めるようにする。
+   要素の並びと display は innerText（JEV に渡す文字）を変えないように保つ */
+.pane { background:var(--sheet); border:1px solid var(--rule); padding:12px 16px; overflow:auto; min-height:0; }
+.pane-empty { color:var(--muted); margin:0; }
+.pane-meta { margin:0 0 4px; font-size:12px; font-weight:700; color:var(--muted); }
+.pane-label { margin:8px 0 1px; font-size:11px; font-weight:700; color:var(--muted); letter-spacing:.06em; }
+.pane-subject { margin:0; font-size:18px; font-weight:700; white-space:pre-wrap; }
+.pane-body { margin:0; line-height:1.65; font-size:14px; white-space:pre-wrap; }
+.pane-decided { margin:8px 0 0; padding:3px 10px; background:var(--series-bg); border-left:3px solid var(--series); font-size:13px; font-weight:700; }
+.pane-step { margin:12px 0 6px; font-size:14px; border-top:1px solid var(--rule-soft); padding-top:10px; }
+.pane-choices { list-style:none; margin:0; padding:0; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px 12px; }
+.pane-choices li { display:grid; gap:2px; align-content:start; }
+.pane-choices button { justify-self:start; border:1px solid var(--rule); background:var(--sheet); padding:3px 12px; font-size:13px; font-weight:700; border-radius:3px; cursor:default; }
+.pane-choices button.pressed { background:var(--struct-bg); border-color:var(--struct); color:var(--ink); }
+.pane-choices .desc { display:block; font-size:11px; line-height:1.45; color:var(--muted); }
+.pane-saved { margin:12px 0 0; font-weight:700; color:var(--jev); }
+
+/* 手ごとの往復（枠の外。観測には入らない）。1件に寄る表示 */
+.trace { background:var(--sheet); border:1px solid var(--rule); padding:10px 12px; display:grid; gap:8px; align-content:start; overflow:auto; min-height:0; }
+.trace-empty { margin:0; color:var(--muted); font-size:14px; }
+.tstep { border:1px solid var(--rule-soft); padding:8px 10px; display:grid; gap:5px; }
+.tstep.holding { border-color:var(--claude); background:var(--claude-bg); }
+.tstep h3 { margin:0; font-size:14px; display:flex; gap:8px; align-items:center; }
+.back { font-size:11px; font-weight:700; color:var(--jev); background:var(--jev-bg); padding:1px 6px; border-radius:3px; }
+.row { display:grid; grid-template-columns:52px minmax(0,1fr); gap:10px; align-items:center; font-size:14px; }
+.who { font-size:12px; font-weight:700; text-align:center; padding:1px 0; border:1px solid transparent; border-radius:3px; }
+.who.jev { color:var(--jev); background:var(--jev-bg); }
+.who.claude { color:var(--claude); background:var(--claude-bg); }
+.who.code { color:var(--muted); background:var(--sheet); border-color:var(--rule); }
+.who.stop { color:var(--stop); background:var(--stop-bg); }
+.who.claude.think { border-color:var(--claude); animation:pulseBorder 1.1s ease-in-out infinite; }
+.who.claude.queue { background:var(--sheet); border:1px dashed var(--claude); }
+.live { font-weight:700; font-variant-numeric:tabular-nums; }
+.live.thinking, .live.queued { color:var(--claude); }
+.live.thinking::before { content:""; display:inline-block; width:8px; height:8px; margin-right:8px; border-radius:50%; background:var(--claude); animation:pulse 1.1s ease-in-out infinite; vertical-align:1px; }
+.hold-note { margin:0; font-size:12px; color:var(--muted); }
+.cl-body { display:grid; gap:1px; min-width:0; }
+.reason { font-size:12px; color:var(--muted); overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; }
+.conf { display:grid; grid-template-columns:120px minmax(0,1fr); gap:10px; align-items:center; }
+.meter { position:relative; height:8px; background:var(--rule-soft); }
+.meter .fill { position:absolute; inset:0 auto 0 0; width:calc(var(--w, 0) * 100%); background:var(--claude); transition:width .3s; }
+.meter.pass .fill { background:var(--jev); }
+.meter .line { position:absolute; top:-3px; bottom:-3px; left:65%; width:2px; background:var(--ink); }
+.conf-text { display:flex; justify-content:space-between; gap:8px; min-width:0; white-space:nowrap; }
+.conf-text b { font-weight:700; }
+.verdict { margin:0; font-weight:700; font-size:12px; }
+.verdict.pass { color:var(--jev); } .verdict.fail { color:var(--claude); } .verdict.err { color:var(--stop); }
+.wait { color:var(--muted); font-weight:700; }
+.tsaved { margin:0; font-weight:700; font-size:13px; color:var(--ink); }
+
+/* ログ */
+.log { list-style:none; margin:0; padding:0; display:grid; gap:3px; align-content:start; overflow:auto; min-height:0; background:var(--sheet); border:1px solid var(--rule); padding:8px; }
+.log li { border-left:3px solid var(--c, var(--rule)); padding:1px 8px; font-size:14px; line-height:1.5; font-variant-numeric:tabular-nums; }
+.log li.l-jev { --c:var(--jev); } .log li.l-claude { --c:var(--claude); } .log li.l-hold { --c:var(--claude); } .log li.l-stop { --c:var(--stop); }
+.log time { color:var(--muted); margin-right:6px; }
+
+@keyframes run { 0% { transform:translateX(-100%); } 100% { transform:translateX(290%); } }
+@keyframes pulse { 0%, 100% { opacity:1; } 50% { opacity:.3; } }
+@keyframes pulseBorder { 0%, 100% { border-color:var(--claude); } 50% { border-color:var(--claude-bg); } }
+@keyframes dashPulse { 0%, 100% { border-color:var(--claude); } 50% { border-color:var(--rule); } }
+@keyframes settle { 0% { opacity:.5; } 100% { opacity:1; } }
+
+@media (max-width:1279px) {
+  .meters { grid-template-columns:1fr; }
+  .side-row { flex-wrap:wrap; }
+  .lane-jev, .queue-wrap { flex:1 1 100%; }
+  .lane-claude { flex-wrap:wrap; padding:6px 12px; }
+  .board-head { flex-direction:column; align-items:start; }
+  .legend { justify-content:flex-start; }
+  .board { grid-template-columns:repeat(6,minmax(0,1fr)); }
+  .layout { grid-template-columns:1fr; }
+  .pane, .trace { min-height:320px; }
+  .log { max-height:200px; }
+}
+@media (max-width:640px) {
+  .desk { padding:10px 16px 20px; }
+  .top { flex-direction:column; align-items:start; }
+  .kicker { display:block; margin:2px 0 0; white-space:normal; }
+  .title { white-space:normal; }
+  .by-step { flex-direction:column; }
+  .bs, .roundtrip { background:var(--sheet); padding:6px 12px; }
+  .board { grid-template-columns:repeat(3,minmax(0,1fr)); }
+  .seats { grid-template-columns:1fr; }
+  .pane-choices { grid-template-columns:1fr; }
+}
+/* 動きを減らす設定でも、状態は文字（「JEV 判定中…」「考え中 n秒」「順番待ち n番目」「Claude 決定→JEV へ」）で分かる */
+@media (prefers-reduced-motion:reduce) { * { transition:none!important; animation:none!important; } }
